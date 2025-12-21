@@ -9,19 +9,22 @@ load_dotenv()
 
 class BedrockClassifier:
     def __init__(self):
+        region = (
+            os.getenv("AWS_REGION")
+            or os.getenv("AWS_DEFAULT_REGION")
+            or "us-east-1"
+        )
+
         self.client = boto3.client(
             "bedrock-runtime",
-            region_name=os.getenv("AWS_REGION")
+            region_name=region
         )
+
         self.model_id = os.getenv("BEDROCK_MODEL_ID")
+        if not self.model_id:
+            raise RuntimeError("BEDROCK_MODEL_ID is not set")
 
     def classify_email(self, email_text: str) -> dict:
-        """
-        Classifies an email thread using AWS Bedrock (LLaMA).
-        Fully hardened against markdown, empty output, and JSON failures.
-        Never raises on bad model output.
-        """
-
         def _invoke(prompt: str) -> str:
             body = {
                 "prompt": prompt,
@@ -39,22 +42,20 @@ class BedrockClassifier:
 
             return json.loads(response["body"].read())["generation"]
 
-        # ---------------- BASE PROMPT ----------------
         base_prompt = f"""
 You are a JSON-only email classification engine.
 
-STRICT RULES:
+Rules:
 - Output ONLY valid JSON
-- NO explanations
-- NO markdown
-- NO backticks
-- NO repetition
-- ONE JSON object only
+- No markdown
+- No backticks
+- No explanations
+- One JSON object only
 
 Email:
 \"\"\"{email_text}\"\"\"
 
-Return exactly this schema:
+Return exactly:
 {{
   "category": "urgent | important | promotional | skip",
   "urgency_reason": "short reason",
@@ -63,19 +64,18 @@ Return exactly this schema:
 }}
 """
 
-        # ---------------- ATTEMPT 1 ----------------
+        # ---- Attempt 1 ----
         try:
             raw = _invoke(base_prompt).strip()
         except Exception:
             raw = ""
 
-        # ---------------- ATTEMPT 2 (HARD FALLBACK) ----------------
+        # ---- Attempt 2 (fallback) ----
         if not raw or raw.startswith("```") or "{" not in raw:
             fallback_prompt = f"""
 Return ONLY valid JSON.
-No markdown.
-No backticks.
 No text.
+No markdown.
 
 Email:
 \"\"\"{email_text}\"\"\"
@@ -87,18 +87,14 @@ JSON:
             except Exception:
                 raw = ""
 
-        # ---------------- CLEAN OUTPUT ----------------
+        # ---- Clean output ----
         cleaned = raw.strip()
-
-        # Remove any accidental markdown fences
         cleaned = re.sub(r"```[a-zA-Z]*", "", cleaned)
         cleaned = cleaned.replace("```", "").strip()
 
-        # ---------------- PARSE JSON ----------------
         match = re.search(r"\{[\s\S]*?\}", cleaned)
 
         if not match:
-            # Absolute safe fallback — NEVER crash pipeline
             return {
                 "category": "skip",
                 "urgency_reason": "model returned invalid output",
@@ -116,7 +112,5 @@ JSON:
                 "suggested_action": "ignore"
             }
 
-        # ---------------- TYPE SAFETY ----------------
         parsed["needs_reply"] = bool(parsed.get("needs_reply"))
-
         return parsed
