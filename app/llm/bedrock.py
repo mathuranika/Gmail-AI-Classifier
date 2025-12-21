@@ -17,26 +17,27 @@ class BedrockClassifier:
 
     def classify_email(self, email_text: str) -> dict:
         prompt = f"""
-        You are an email classification engine.
+You are an email classification engine.
 
 Rules:
 - Output ONLY valid JSON
 - No explanations
-- No text before or after json
-- Use the exact keys and value formats as specified below.
+- No text before or after JSON
 - No markdown
 - No repetition
+- Use exact key names and value types
 
 Task:
 Classify the email thread and determine urgency and required action.
 
 Email:
-"{email_text}"
+\"\"\"{email_text}\"\"\"
+
 Return JSON in exactly this format:
 {{
   "category": "urgent | important | promotional | skip",
   "urgency_reason": "short reason",
-  "needs_reply": boolean,
+  "needs_reply": true or false,
   "suggested_action": "short actionable instruction"
 }}
 """
@@ -57,8 +58,24 @@ Return JSON in exactly this format:
 
         raw = json.loads(response["body"].read())["generation"]
 
-        match = re.search(r"\{[\s\S]*?\}", raw)
+        # -------- FIX STARTS HERE --------
+
+        cleaned = raw.strip()
+
+        # Remove markdown fences if model adds them
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```[a-zA-Z]*", "", cleaned)
+            cleaned = re.sub(r"```$", "", cleaned)
+            cleaned = cleaned.strip()
+
+        # Extract first JSON object only
+        match = re.search(r"\{[\s\S]*?\}", cleaned)
         if not match:
             raise ValueError(f"Invalid JSON from Bedrock: {raw}")
 
-        return json.loads(match.group())
+        parsed = json.loads(match.group())
+
+        # Enforce correct boolean type
+        parsed["needs_reply"] = bool(parsed.get("needs_reply"))
+
+        return parsed
