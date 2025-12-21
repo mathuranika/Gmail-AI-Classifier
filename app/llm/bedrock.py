@@ -45,19 +45,13 @@ Return exactly:
 }}
 """
 
-        body = {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt}
-                    ]
-                }
-            ],
-            "max_tokens": 200,
-            "temperature": 0.0,
-            "top_p": 0.9
-        }
+        body = body = {
+    "prompt": prompt,
+    "max_gen_len": 200,
+    "temperature": 0.0,
+    "top_p": 0.9
+}
+
 
         response = self.client.invoke_model(
             modelId=self.model_id,
