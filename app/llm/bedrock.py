@@ -1,6 +1,7 @@
 import boto3
 import json
 import os
+import re
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -8,50 +9,44 @@ load_dotenv()
 
 class BedrockClassifier:
     def __init__(self):
-        region = (
-            os.getenv("AWS_REGION")
-            or os.getenv("AWS_DEFAULT_REGION")
-            or "us-east-1"
-        )
-
         self.client = boto3.client(
             "bedrock-runtime",
-            region_name=region
+            region_name=os.getenv("AWS_REGION")
         )
-
         self.model_id = os.getenv("BEDROCK_MODEL_ID")
-        if not self.model_id:
-            raise RuntimeError("BEDROCK_MODEL_ID is not set")
 
     def classify_email(self, email_text: str) -> dict:
         prompt = f"""
-You are a strict JSON-only email classification engine.
+        You are an email classification engine.
 
 Rules:
 - Output ONLY valid JSON
-- No markdown
 - No explanations
-- One JSON object only
+- No text before or after json
+- Use the exact keys and value formats as specified below.
+- No markdown
+- No repetition
+
+Task:
+Classify the email thread and determine urgency and required action.
 
 Email:
-\"\"\"{email_text}\"\"\"
-
-Return exactly:
+"{email_text}"
+Return JSON in exactly this format:
 {{
   "category": "urgent | important | promotional | skip",
   "urgency_reason": "short reason",
-  "needs_reply": true or false,
+  "needs_reply": boolean,
   "suggested_action": "short actionable instruction"
 }}
 """
 
-        body = body = {
-    "prompt": prompt,
-    "max_gen_len": 200,
-    "temperature": 0.0,
-    "top_p": 0.9
-}
-
+        body = {
+            "prompt": prompt,
+            "max_gen_len": 150,
+            "temperature": 0.0,
+            "top_p": 0.9
+        }
 
         response = self.client.invoke_model(
             modelId=self.model_id,
@@ -60,18 +55,10 @@ Return exactly:
             accept="application/json"
         )
 
-        payload = json.loads(response["body"].read())
+        raw = json.loads(response["body"].read())["generation"]
 
-        try:
-            text = payload["output"]["message"]["content"][0]["text"]
-            parsed = json.loads(text)
-        except Exception:
-            return {
-                "category": "skip",
-                "urgency_reason": "invalid model output",
-                "needs_reply": False,
-                "suggested_action": "ignore"
-            }
+        match = re.search(r"\{[\s\S]*?\}", raw)
+        if not match:
+            raise ValueError(f"Invalid JSON from Bedrock: {raw}")
 
-        parsed["needs_reply"] = bool(parsed.get("needs_reply"))
-        return parsed
+        return json.loads(match.group())
