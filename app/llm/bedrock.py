@@ -16,28 +16,28 @@ class BedrockClassifier:
         self.model_id = os.getenv("BEDROCK_MODEL_ID")
 
     def classify_email(self, email_text: str) -> dict:
-        prompt = f"""
-        You are an email classification engine.
+        prompt = prompt = f"""
+You are a strict JSON generator.
 
-Rules:
+Rules (MANDATORY):
 - Output ONLY valid JSON
-- No explanations
-- No text before or after json
-- Use the exact keys and value formats as specified below.
-- No markdown
-- No repetition
+- Output EXACTLY ONE JSON OBJECT
+- DO NOT return an array
+- DO NOT explain
+- DO NOT add text before or after JSON
 
-Task:
-Classify the email thread and determine urgency and required action.
+Classify the following email thread into ONE category:
+urgent, important, promotional, or skip.
 
-Email:
-"{email_text}"
-Return JSON in exactly this format:
+Email thread:
+\"\"\"{email_text}\"\"\"
+
+Return JSON in EXACTLY this format:
 {{
   "category": "urgent | important | promotional | skip",
-  "urgency_reason": "short reason",
-  "needs_reply": boolean,
-  "suggested_action": "short actionable instruction"
+  "urgency_reason": "string",
+  "needs_reply": true or false,
+  "suggested_action": "string"
 }}
 """
 
