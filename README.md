@@ -49,7 +49,7 @@ EC2 Instance
         └─ Auto-Shutdown EC2
 ```
 
-### Detailed Architecture Diagram (Mermaid)
+### Detailed Architecture Diagram
 
 ```mermaid
 flowchart TD
